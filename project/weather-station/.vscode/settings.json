@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "freertos.h": "c",
+        "task_air_sensor.h": "c"
+    }
+}
