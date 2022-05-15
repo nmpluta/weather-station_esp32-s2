@@ -16,28 +16,36 @@ static const char *TAG = "i2c-simple-example";
 #define I2C_MASTER_RX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_TIMEOUT_MS       1000
 
+#define WRITE_BIT I2C_MASTER_WRITE  /*!< I2C master write */
+#define READ_BIT I2C_MASTER_READ    /*!< I2C master read */
+#define ACK_CHECK_EN 0x1            /*!< I2C master will check ack from slave*/
+#define ACK_CHECK_DIS 0x0           /*!< I2C master will not check ack from slave */
+#define ACK_VAL 0x0                 /*!< I2C ack value */
+#define NACK_VAL 0x1                /*!< I2C nack value */
 
 // defines for ccs_811
-#define STATUS_REG 0x00
-#define MEAS_MODE_REG 0x01
-#define ALG_RESULT_DATA 0x02
-#define ENV_DATA 0x05
-#define NTC_REG 0x06
-#define THRESHOLDS 0x10
-#define BASELINE 0x11
-#define HW_ID_REG 0x20
-#define ERROR_ID_REG 0xE0
-#define APP_START_REG 0xF4
-#define SW_RESET 0xFF
-#define CCS_811_ADDRESS 0x5A
-#define CCS_811_WHO_AM_I_REG_ADDR 0x81
-#define GPIO_WAKE 0x5
-#define DRIVE_MODE_IDLE 0x0
-#define DRIVE_MODE_1SEC 0x10
-#define DRIVE_MODE_10SEC 0x20
-#define DRIVE_MODE_60SEC 0x30
-#define INTERRUPT_DRIVEN 0x8
-#define THRESHOLDS_ENABLED 0x4
+#define STATUS_REG                  0x00
+#define MEAS_MODE_REG               0x01
+#define ALG_RESULT_DATA             0x02
+#define ENV_DATA                    0x05
+#define NTC_REG                     0x06
+#define THRESHOLDS                  0x10
+#define BASELINE                    0x11
+#define HW_ID_REG                   0x20
+#define ERROR_ID_REG                0xE0
+#define APP_START_REG               0xF4
+#define SW_RESET                    0xFF
+#define CCS_811_ADDRESS             0x5A
+#define CCS_811_WHO_AM_I_REG_ADDR   0x81
+#define GPIO_WAKE                   0x5
+#define DRIVE_MODE_IDLE             0x0             /*!< Drive mode */
+#define DRIVE_MODE_1SEC             0x10            /*!< Drive mode */
+#define DRIVE_MODE_10SEC            0x20            /*!< Drive mode */
+#define DRIVE_MODE_60SEC            0x30            /*!< Drive mode */
+#define INTERRUPT_DRIVEN            0x8
+#define THRESHOLDS_ENABLED          0x4
+
+#define ERROR_NOT_A_CCS811          -1
 
 typedef struct 
 {
@@ -51,6 +59,7 @@ typedef struct
 // static esp_err_t mpu9250_register_read(uint8_t reg_addr, uint8_t *data, size_t len);
 // static esp_err_t mpu9250_register_write_byte(uint8_t reg_addr, uint8_t data);
 static esp_err_t i2c_master_init(void);
+static esp_err_t i2c_ccs811_init(i2c_port_t i2c_num);
 
 uint8_t i2c_buff[8];
 bool wake_gpio_enabled = true;
@@ -118,4 +127,77 @@ static esp_err_t i2c_master_init(void)
     i2c_param_config(i2c_master_port, &conf);
 
     return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
+}
+
+/**
+ * @brief i2c slave CCS811 air quality sensor initialization
+ */
+ static esp_err_t i2c_ccs811_init(i2c_port_t i2c_num)
+ {
+    esp_err_t ret;
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | WRITE_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, HW_ID_REG, ACK_CHECK_EN);
+    i2c_master_stop(cmd);
+    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+    if (ret != ESP_OK) 
+    {
+        return ret;
+    }
+
+    cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | READ_BIT, ACK_CHECK_EN);
+    i2c_master_read_byte(cmd, &i2c_buff[0], NACK_VAL);
+    i2c_master_stop(cmd);
+    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+
+    if(i2c_buff[0] != 0x81)
+    {
+        return ERROR_NOT_A_CCS811;
+    }
+    return ret;
+ }
+
+/**
+ * @brief test code to operate on CCS811 air quality sensor
+ *
+ * 1. set drive mode in Measure Mode Register
+ * _________________________________________________________________
+ * | start | slave_addr + wr_bit + ack | write 1 byte + ack  | stop |
+ * --------|---------------------------|---------------------|------|
+ * 2. wait more than 24 ms
+ * 3. read data
+ * ______________________________________________________________________________________
+ * | start | slave_addr + rd_bit + ack | read 1 byte + ack  | read 1 byte + nack | stop |
+ * --------|---------------------------|--------------------|--------------------|------|
+ */
+static esp_err_t i2c_master_sensor_test(i2c_port_t i2c_num, uint8_t *data_h, uint8_t *data_l)
+{
+    esp_err_t ret;
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | WRITE_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, MEAS_MODE_REG, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, DRIVE_MODE_1SEC, ACK_CHECK_EN);
+    i2c_master_stop(cmd);
+    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+    if (ret != ESP_OK) 
+    {
+        return ret;
+    }
+    vTaskDelay(30 / portTICK_PERIOD_MS);
+    cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | READ_BIT, ACK_CHECK_EN);
+    i2c_master_read_byte(cmd, data_h, ACK_VAL);
+    i2c_master_read_byte(cmd, data_l, NACK_VAL);
+    i2c_master_stop(cmd);
+    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+    return ret;
 }
