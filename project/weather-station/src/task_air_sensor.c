@@ -45,7 +45,10 @@ static const char *TAG = "i2c-simple-example";
 #define INTERRUPT_DRIVEN            0x8
 #define THRESHOLDS_ENABLED          0x4
 
+#define APP_VALID                   0x10
+
 #define ERROR_NOT_A_CCS811          -10
+#define ERROR_NO_VALID_APP          -9
 
 typedef struct 
 {
@@ -81,6 +84,8 @@ void task_air_sensor(void *pvParameter)
     ESP_ERROR_CHECK(i2c_sensor_init());
     ESP_LOGI(TAG, "I2C Sensor initialized successfully.");
 
+    ESP_ERROR_CHECK(i2c_sensor_start_app()); 
+    ESP_LOGI(TAG, "I2C Sensor app started successfully.");
 
     while(1)
     {
@@ -237,6 +242,14 @@ static esp_err_t i2c_sensor_read_errors(void)
 
 static esp_err_t i2c_sensor_start_app(void)
 {
+    ESP_ERROR_CHECK(i2c_sensor_read_status());
+
+    if(!(current_data.status & APP_VALID))
+    {
+        return ERROR_NO_VALID_APP;
+    }
+
+
     i2c_port_t i2c_num = I2C_MASTER_NUM;
     esp_err_t ret;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -244,17 +257,13 @@ static esp_err_t i2c_sensor_start_app(void)
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, ERROR_ID_REG, ACK_CHECK_EN);
-
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | READ_BIT, ACK_VAL);
-    i2c_master_read_byte(cmd, &current_data.error_id, NACK_VAL);
+    i2c_master_write_byte(cmd, APP_START_REG, ACK_CHECK_EN);
     i2c_master_stop(cmd);
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) 
     {
-        ESP_LOGI(TAG,"Error during reading from ERROR_ID_REG.\n");
+        ESP_LOGI(TAG,"Error during writing to APP_START_REG.\n");
         return ret;
     }
 
