@@ -11,7 +11,7 @@ static const char *TAG = "i2c-simple-example";
 #define I2C_MASTER_SCL_IO           2                      /*!< GPIO number used for I2C master clock */
 #define I2C_MASTER_SDA_IO           1                      /*!< GPIO number used for I2C master data  */
 #define I2C_MASTER_NUM              0                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
-#define I2C_MASTER_FREQ_HZ          4000                     /*!< I2C master clock frequency */
+#define I2C_MASTER_FREQ_HZ          40000                     /*!< I2C master clock frequency */
 #define I2C_MASTER_TX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_RX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_TIMEOUT_MS       1000
@@ -45,7 +45,7 @@ static const char *TAG = "i2c-simple-example";
 #define INTERRUPT_DRIVEN            0x8
 #define THRESHOLDS_ENABLED          0x4
 
-#define ERROR_NOT_A_CCS811          -1
+#define ERROR_NOT_A_CCS811          -10
 
 typedef struct 
 {
@@ -60,31 +60,39 @@ ccs811_measurement_t current_data;
 
 static esp_err_t i2c_master_init(void);
 static esp_err_t i2c_sensor_init(void);
-static esp_err_t i2c_get_sensor_data(void);
+static esp_err_t i2c_sensor_read_status(void);
+static esp_err_t i2c_sensor_read_errors(void);
+static esp_err_t i2c_sensor_check(void);
+static esp_err_t i2c_sensor_start_app(void);
 
 uint8_t i2c_buff[8];
 bool wake_gpio_enabled = true;
 
 void task_air_sensor(void *pvParameter)
 {
-    printf("Start of Task Air Sensor\n");
+    printf("Start of Task Air Sensor.\n");
 
     ESP_ERROR_CHECK(i2c_master_init());
-    ESP_LOGI(TAG, "I2C Master initialized successfully");
+    ESP_LOGI(TAG, "I2C Master initialized successfully.");
 
-    // ESP_ERROR_CHECK(i2c_sensor_init());
-    // ESP_LOGI(TAG, "I2C Sensor initialized successfully");
+    ESP_ERROR_CHECK(i2c_sensor_check());
+    ESP_LOGI(TAG, "Sensor successfully connected to I2C bus.");
 
-    
+    ESP_ERROR_CHECK(i2c_sensor_init());
+    ESP_LOGI(TAG, "I2C Sensor initialized successfully.");
+
 
     while(1)
     {
         printf("App in Task Air Sensor\n");
 
-        i2c_sensor_init();
-        i2c_get_sensor_data();
+        i2c_sensor_read_status();
         printf("status register = %d\n", current_data.status);
-        vTaskDelay(30 / portTICK_PERIOD_MS);
+
+        i2c_sensor_read_errors();
+        printf("error id register = %d\n", current_data.error_id);
+
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -143,20 +151,20 @@ static esp_err_t i2c_sensor_init(void)
     }
     vTaskDelay(30 / portTICK_PERIOD_MS);
 
+    return ret;
+}
+
+static esp_err_t i2c_sensor_check(void)
+{
+    i2c_port_t i2c_num = I2C_MASTER_NUM;
+    esp_err_t ret;
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | WRITE_BIT, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, HW_ID_REG, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGI(TAG,"Error during writing to HAW_ID_REG.\n");
-        return ret;
-    }
 
-    cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | READ_BIT, ACK_CHECK_EN);
     i2c_master_read_byte(cmd, &i2c_buff[0], NACK_VAL);
@@ -173,7 +181,8 @@ static esp_err_t i2c_sensor_init(void)
     return ret;
 }
 
-static esp_err_t i2c_get_sensor_data(void)
+
+static esp_err_t i2c_sensor_read_status(void)
 {
     i2c_port_t i2c_num = I2C_MASTER_NUM;
     esp_err_t ret;
@@ -183,16 +192,7 @@ static esp_err_t i2c_get_sensor_data(void)
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | WRITE_BIT, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, STATUS_REG, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGI(TAG,"Error during writing to STATUS_REG.\n");
-        return ret;
-    }
 
-    cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | READ_BIT, ACK_VAL);
     i2c_master_read_byte(cmd, &current_data.status, NACK_VAL);
@@ -207,3 +207,57 @@ static esp_err_t i2c_get_sensor_data(void)
 
     return ret;
 }
+
+
+static esp_err_t i2c_sensor_read_errors(void)
+{
+    i2c_port_t i2c_num = I2C_MASTER_NUM;
+    esp_err_t ret;
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+
+    cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | WRITE_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, ERROR_ID_REG, ACK_CHECK_EN);
+
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | READ_BIT, ACK_VAL);
+    i2c_master_read_byte(cmd, &current_data.error_id, NACK_VAL);
+    i2c_master_stop(cmd);
+    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+    if (ret != ESP_OK) 
+    {
+        ESP_LOGI(TAG,"Error during reading from ERROR_ID_REG.\n");
+        return ret;
+    }
+
+    return ret;
+}
+
+static esp_err_t i2c_sensor_start_app(void)
+{
+    i2c_port_t i2c_num = I2C_MASTER_NUM;
+    esp_err_t ret;
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+
+    cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | WRITE_BIT, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, ERROR_ID_REG, ACK_CHECK_EN);
+
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | READ_BIT, ACK_VAL);
+    i2c_master_read_byte(cmd, &current_data.error_id, NACK_VAL);
+    i2c_master_stop(cmd);
+    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+    if (ret != ESP_OK) 
+    {
+        ESP_LOGI(TAG,"Error during reading from ERROR_ID_REG.\n");
+        return ret;
+    }
+
+    return ret;
+}
+
