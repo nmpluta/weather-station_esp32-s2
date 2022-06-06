@@ -1,0 +1,12 @@
+{
+    "folders": [
+        {
+            "path": "weather-station"
+        }
+    ],
+    "settings": {
+        "files.associations": {
+            "nvs_flash.h": "c"
+        }
+    }
+}
