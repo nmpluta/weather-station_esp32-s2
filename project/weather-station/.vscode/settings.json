@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "freertos.h": "c",
-        "task_air_sensor.h": "c"
+        "task_air_sensor.h": "c",
+        "utf8tab.h": "c"
     }
 }

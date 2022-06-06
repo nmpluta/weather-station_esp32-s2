@@ -11,7 +11,7 @@ static const char *TAG = "i2c-simple-example";
 #define I2C_MASTER_SCL_IO           2                      /*!< GPIO number used for I2C master clock */
 #define I2C_MASTER_SDA_IO           1                      /*!< GPIO number used for I2C master data  */
 #define I2C_MASTER_NUM              0                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
-#define I2C_MASTER_FREQ_HZ          40000                     /*!< I2C master clock frequency */
+#define I2C_MASTER_FREQ_HZ          100000                     /*!< I2C master clock frequency */
 #define I2C_MASTER_TX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_RX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_TIMEOUT_MS       1000
@@ -63,7 +63,7 @@ typedef struct
 
 ccs811_measurement_t current_data;
 
-static esp_err_t i2c_master_init(void);
+esp_err_t i2c_master_init(void);
 static esp_err_t i2c_sensor_init(void);
 static esp_err_t i2c_sensor_read_status(void);
 static esp_err_t i2c_sensor_read_errors(void);
@@ -78,11 +78,11 @@ void task_air_sensor(void *pvParameter)
 {
     printf("Start of Task Air Sensor.\n");
 
-    ESP_ERROR_CHECK(i2c_master_init());
-    ESP_LOGI(TAG, "I2C Master initialized successfully.");
+    // ESP_ERROR_CHECK(i2c_master_init());
+    // ESP_LOGI(TAG, "I2C Master initialized successfully.");
 
-    ESP_ERROR_CHECK(i2c_sensor_check());
-    ESP_LOGI(TAG, "Sensor successfully connected to I2C bus.");
+    // ESP_ERROR_CHECK(i2c_sensor_check());
+    // ESP_LOGI(TAG, "Sensor successfully connected to I2C bus.");
 
     ESP_ERROR_CHECK(i2c_sensor_init());
     ESP_LOGI(TAG, "I2C Sensor initialized successfully.");
@@ -108,7 +108,7 @@ void task_air_sensor(void *pvParameter)
         i2c_sensor_read_errors();
         printf("error id register = %d\n", current_data.error_id);
 
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -116,7 +116,7 @@ void task_air_sensor(void *pvParameter)
 /**
  * @brief i2c master initialization
  */
-static esp_err_t i2c_master_init(void)
+esp_err_t i2c_master_init(void)
 {
     i2c_port_t i2c_master_port = I2C_MASTER_NUM;
 
@@ -156,7 +156,7 @@ static esp_err_t i2c_sensor_init(void)
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, CCS_811_ADDRESS << 1 | WRITE_BIT, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, MEAS_MODE_REG, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, DRIVE_MODE_1SEC, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, DRIVE_MODE_10SEC, ACK_CHECK_EN);
     i2c_master_stop(cmd);
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_PERIOD_MS);
     i2c_cmd_link_delete(cmd);
@@ -194,6 +194,8 @@ static esp_err_t i2c_sensor_check(void)
         ESP_LOGI(TAG,"Error during reading from HW_ID_REG.\n");
         return ERROR_NOT_A_CCS811;
     }
+
+    printf("ret = %d \n", ret);
     return ret;
 }
 

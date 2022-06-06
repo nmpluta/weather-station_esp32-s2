@@ -1,0 +1,21 @@
+{
+	"folders": [
+		{
+			"path": "weather-station"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"freertos.h": "c",
+			"task_air_sensor.h": "c",
+			"utf8tab.h": "c",
+			"u8g2lib.h": "c",
+			"task.h": "c",
+			"sdkconfig.h": "c",
+			"u8g2_esp32_hal.h": "c",
+			"i2c.h": "c",
+			"u8g2.h": "c",
+			"u8x8.h": "c"
+		}
+	}
+}
