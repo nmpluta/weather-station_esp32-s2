@@ -4,6 +4,7 @@
 
 #include "esp_log.h"
 #include "driver/i2c.h"
+#include "common_i2c.h"
 
 static const char *TAG = "i2c-simple-example";
 
@@ -64,7 +65,6 @@ typedef struct
 
 ccs811_measurement_t current_data;
 
-static esp_err_t i2c_master_init(void);
 static esp_err_t i2c_sensor_init(void);
 static esp_err_t i2c_sensor_read_status(void);
 static esp_err_t i2c_sensor_read_errors(void);
@@ -79,10 +79,6 @@ void task_air_sensor(void *pvParameter)
 {
     esp_err_t err;
     printf("Start of Task Air Sensor.\n");
-
-    err = i2c_master_init();
-    ESP_ERROR_CHECK(err);
-    ESP_LOGI(TAG, "I2C Master initialized successfully.");
 
     err = i2c_sensor_check();
     ESP_ERROR_CHECK(err);
@@ -123,27 +119,6 @@ void task_air_sensor(void *pvParameter)
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
-}
-
-/**
- * @brief i2c master initialization
- */
-static esp_err_t i2c_master_init(void)
-{
-    i2c_port_t i2c_master_port = I2C_MASTER_NUM;
-
-    i2c_config_t conf = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = I2C_MASTER_SDA_IO,
-        .scl_io_num = I2C_MASTER_SCL_IO,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = I2C_MASTER_FREQ_HZ,
-    };
-
-    i2c_param_config(i2c_master_port, &conf);
-
-    return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
 }
 
 /**
